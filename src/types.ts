@@ -125,16 +125,56 @@ export interface PermissionRequest {
   resolve: (allowed: boolean) => void;
 }
 
-// ─── Command (slash commands) ────────────────────────────────────────────
-export interface SlashCommand {
+// ─── Command System (slash commands) ─────────────────────────────────────
+
+/**
+ * Three command types following claude-src design:
+ *
+ *  local     — executes locally, returns text. Does NOT enter agent loop.
+ *  prompt    — expands to a prompt string sent to the agent loop.
+ *  local-jsx — (reserved) renders an Ink component, does NOT enter agent loop.
+ */
+export type CommandType = "local" | "prompt" | "local-jsx";
+
+/** Result from a local command */
+export type LocalCommandResult =
+  | { type: "text"; value: string }
+  | { type: "clear" }
+  | { type: "skip" };
+
+/** Shared fields for all command types */
+interface CommandBase {
   name: string;
+  aliases?: string[];
   description: string;
-  execute(args: string, ctx: CommandContext): Promise<string | null>;
+  argumentHint?: string;
+  isHidden?: boolean;
 }
+
+/** local — runs code directly, never enters agent loop */
+export interface LocalCommand extends CommandBase {
+  type: "local";
+  execute(args: string, ctx: CommandContext): Promise<LocalCommandResult>;
+}
+
+/** prompt — expands into a prompt that is sent to the agent */
+export interface PromptCommand extends CommandBase {
+  type: "prompt";
+  getPrompt(args: string, ctx: CommandContext): Promise<string>;
+}
+
+/** local-jsx — renders React/Ink UI (reserved for future) */
+export interface LocalJsxCommand extends CommandBase {
+  type: "local-jsx";
+  execute(args: string, ctx: CommandContext): Promise<LocalCommandResult>;
+}
+
+export type Command = LocalCommand | PromptCommand | LocalJsxCommand;
 
 export interface CommandContext {
   setState: (fn: (s: AppState) => AppState) => void;
   getState: () => AppState;
-  providers: ProviderConfig[];
   customModels: CustomModelEntry[];
+  cwd: string;
+  skills: Skill[];
 }

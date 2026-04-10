@@ -1,6 +1,11 @@
 /**
  * App — root TUI component. Composes Logo, MessageList, InputBox, StatusBar,
  * PermissionDialog. Drives the Agent streaming loop.
+ *
+ * Command dispatch by type:
+ *   local     → execute locally, display result text. No agent loop.
+ *   prompt    → expand to prompt string, feed into agent.runStreaming().
+ *   local-jsx → (reserved) same as local for now.
  */
 import React, { useCallback, useEffect, useRef } from "react";
 import { Box, useApp } from "ink";
@@ -14,7 +19,7 @@ import { createStore, type Store } from "../store.js";
 import { Agent, type AgentEvent } from "../agent.js";
 import { LlmClient } from "../llm.js";
 import { ToolRegistry, registerBuiltinTools } from "../tools.js";
-import { parseSlashCommand, createBuiltinCommands } from "../commands.js";
+import { parseSlashCommand, createBuiltinCommands, findCommand } from "../commands.js";
 import type {
   AppState,
   UIMessage,
@@ -67,7 +72,6 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
     const llm = new LlmClient(currentProvider);
     const agent = new Agent(llm, registry, skills, { cwd });
 
-    // Permission callback
     agent.onPermissionRequest = (toolName, args) => {
       return new Promise<boolean>((resolve) => {
         store.setState((s) => ({
@@ -80,57 +84,24 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
     agentRef.current = agent;
   }, [state.provider, skills, cwd, store]);
 
-  // ─── Handle input submission ─────────────────────────────────────────
-  const handleSubmit = useCallback(
-    async (input: string) => {
-      // Save to history
-      store.setState((s) => ({
-        ...s,
-        inputHistory: [...s.inputHistory, input],
-        historyIndex: -1,
-        errorMessage: null,
-      }));
+  // ─── Build command context (shared by all command types) ──────────────
+  const buildCommandCtx = useCallback((): CommandContext => ({
+    setState: (fn) => store.setState(fn),
+    getState: () => store.getState(),
+    customModels,
+    cwd,
+    skills,
+  }), [store, customModels, cwd, skills]);
 
-      // Check for slash commands
-      const cmd = parseSlashCommand(input);
-      if (cmd) {
-        const commands = createBuiltinCommands();
-        const matched = commands.find((c) => c.name === cmd.name);
-        if (matched) {
-          const commandCtx: CommandContext = {
-            setState: (fn) => store.setState(fn),
-            getState: () => store.getState(),
-            providers: [],
-            customModels,
-          };
-          const result = await matched.execute(cmd.args, commandCtx);
-          if (result === null) {
-            // /clear
-            return;
-          }
-          if (result) {
-            store.setState((s) => ({
-              ...s,
-              messages: [
-                ...s.messages,
-                {
-                  id: nextId(),
-                  role: "system",
-                  content: result,
-                  timestamp: Date.now(),
-                } as UIMessage,
-              ],
-            }));
-          }
-          return;
-        }
-      }
-
-      // Add user message
+  // ─── Run agent streaming loop (reusable for both natural lang & prompt commands)
+  const runAgent = useCallback(
+    async (prompt: string, displayAsUser?: string) => {
+      // Show what the user typed (or the command name) as user message
+      const userContent = displayAsUser ?? prompt;
       const userMsg: UIMessage = {
         id: nextId(),
         role: "user",
-        content: input,
+        content: userContent,
         timestamp: Date.now(),
       };
       store.setState((s) => ({
@@ -142,12 +113,11 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
       const agent = agentRef.current;
       if (!agent) return;
 
-      // Streaming agent loop
       const assistantMsgId = nextId();
       let assistantText = "";
 
       try {
-        for await (const event of agent.runStreaming(input)) {
+        for await (const event of agent.runStreaming(prompt)) {
           switch (event.type) {
             case "text_delta": {
               assistantText += event.text;
@@ -171,10 +141,7 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
               break;
             }
             case "tool_call": {
-              store.setState((s) => ({
-                ...s,
-                status: "tool_running",
-              }));
+              store.setState((s) => ({ ...s, status: "tool_running" }));
               break;
             }
             case "tool_result": {
@@ -186,28 +153,20 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
                 timestamp: Date.now(),
                 isError: !event.result.ok,
               };
-              store.setState((s) => ({
-                ...s,
-                messages: [...s.messages, toolMsg],
-              }));
+              store.setState((s) => ({ ...s, messages: [...s.messages, toolMsg] }));
               break;
             }
             case "usage": {
-              store.setState((s) => ({
-                ...s,
-                usage: event.usage,
-              }));
+              store.setState((s) => ({ ...s, usage: event.usage }));
               break;
             }
             case "done": {
-              // Finalize streaming message
               store.setState((s) => {
                 const msgs = s.messages.map((m) =>
                   m.id === assistantMsgId
                     ? { ...m, isStreaming: false, content: assistantText || event.finalText }
                     : m,
                 );
-                // If no assistant message was created yet (empty stream), add one
                 if (!msgs.find((m) => m.id === assistantMsgId) && event.finalText) {
                   msgs.push({
                     id: assistantMsgId,
@@ -258,12 +217,94 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
         }));
       }
 
-      // Ensure idle on completion
-      store.setState((s) =>
-        s.status !== "idle" ? { ...s, status: "idle" } : s,
-      );
+      store.setState((s) => (s.status !== "idle" ? { ...s, status: "idle" } : s));
     },
     [store],
+  );
+
+  // ─── Handle input submission ─────────────────────────────────────────
+  const handleSubmit = useCallback(
+    async (input: string) => {
+      // Save to history
+      store.setState((s) => ({
+        ...s,
+        inputHistory: [...s.inputHistory, input],
+        historyIndex: -1,
+        errorMessage: null,
+      }));
+
+      // ── Slash command dispatch ──────────────────────────────────────
+      const parsed = parseSlashCommand(input);
+      if (parsed) {
+        const commands = createBuiltinCommands();
+        const matched = findCommand(parsed.name, commands);
+
+        if (matched) {
+          const ctx = buildCommandCtx();
+
+          switch (matched.type) {
+            // ─── LOCAL: execute locally, no agent loop ────────────────
+            case "local":
+            case "local-jsx": {
+              const result = await matched.execute(parsed.args, ctx);
+              switch (result.type) {
+                case "text":
+                  store.setState((s) => ({
+                    ...s,
+                    messages: [
+                      ...s.messages,
+                      {
+                        id: nextId(),
+                        role: "system" as const,
+                        content: result.value,
+                        timestamp: Date.now(),
+                      },
+                    ],
+                  }));
+                  return;
+                case "clear":
+                  store.setState((s) => ({
+                    ...s,
+                    messages: [],
+                    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+                  }));
+                  return;
+                case "skip":
+                  return;
+              }
+              return;
+            }
+
+            // ─── PROMPT: expand to prompt, send to agent loop ─────────
+            case "prompt": {
+              const prompt = await matched.getPrompt(parsed.args, ctx);
+              await runAgent(prompt, input);
+              return;
+            }
+          }
+        }
+
+        // Unknown slash command — show as error
+        store.setState((s) => ({
+          ...s,
+          messages: [
+            ...s.messages,
+            {
+              id: nextId(),
+              role: "system" as const,
+              content: `Unknown command: /${parsed.name}. Type /help to see available commands.`,
+              timestamp: Date.now(),
+              isError: true,
+            },
+          ],
+        }));
+        return;
+      }
+
+      // ── Natural language input → agent loop ────────────────────────
+      await runAgent(input);
+    },
+    [store, buildCommandCtx, runAgent],
   );
 
   const handleHistoryChange = useCallback(
@@ -277,13 +318,10 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
 
   return (
     <Box flexDirection="column" height="100%">
-      {/* Logo — only show when no messages */}
       {state.messages.length === 0 && <Logo provider={state.provider} />}
 
-      {/* Message list */}
       <MessageList messages={state.messages} isStreaming={isProcessing} />
 
-      {/* Permission dialog */}
       {state.showPermission && (
         <PermissionDialog
           request={{
@@ -296,7 +334,6 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
         />
       )}
 
-      {/* Input box */}
       <InputBox
         onSubmit={handleSubmit}
         disabled={isProcessing || !!state.showPermission}
@@ -305,7 +342,6 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
         onHistoryChange={handleHistoryChange}
       />
 
-      {/* Status bar */}
       <StatusBar state={state} />
     </Box>
   );
