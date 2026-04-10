@@ -1,0 +1,31 @@
+{
+  "name": "agent-one",
+  "version": "1.0.0",
+  "description": "Enterprise-grade AI Agent with TUI — multi-model, tool-augmented",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "agent-one": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "fast-glob": "^3.3.3",
+    "gray-matter": "^4.0.3",
+    "ink": "^5.1.0",
+    "ink-spinner": "^5.0.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^18.3.1",
+    "zod": "^3.24.1",
+    "zod-to-json-schema": "^3.23.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.18",
+    "typescript": "^5.7.2"
+  }
+}

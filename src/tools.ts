@@ -1,0 +1,221 @@
+/**
+ * Tool system — Registry + 6 built-in tools.
+ * Schema-driven with Zod validation + automatic JSON Schema generation for LLM.
+ */
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
+import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
+import { dirname, resolve, isAbsolute } from "node:path";
+import fg from "fast-glob";
+import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
+import type { Tool, ToolContext, ToolResult } from "./types.js";
+
+const execAsync = promisify(exec);
+
+// ─── Tool Registry ───────────────────────────────────────────────────────
+export class ToolRegistry {
+  private tools = new Map<string, Tool>();
+
+  register<I>(tool: Tool<I>): void {
+    this.tools.set(tool.name, tool as Tool);
+  }
+
+  get(name: string): Tool | undefined {
+    return this.tools.get(name);
+  }
+
+  list(): Tool[] {
+    return Array.from(this.tools.values());
+  }
+
+  getOpenAIToolSchemas() {
+    return this.list().map((tool) => ({
+      type: "function" as const,
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: zodToJsonSchema(tool.inputSchema, { target: "openAi" }),
+      },
+    }));
+  }
+}
+
+// ─── Path resolution ─────────────────────────────────────────────────────
+function resolvePath(cwd: string, p: string): string {
+  return isAbsolute(p) ? p : resolve(cwd, p);
+}
+
+// ─── Built-in Tools ──────────────────────────────────────────────────────
+export function registerBuiltinTools(registry: ToolRegistry): void {
+  // 1. Shell — execute commands
+  registry.register({
+    name: "shell",
+    description:
+      "Execute a shell command in the workspace. Returns stdout+stderr. Use for builds, git, installs, etc.",
+    inputSchema: z.object({
+      command: z.string().min(1).describe("Shell command to execute"),
+      timeoutMs: z
+        .number()
+        .int()
+        .positive()
+        .max(120_000)
+        .default(30_000)
+        .describe("Timeout in milliseconds"),
+    }),
+    isReadOnly: false,
+    async execute(args, ctx): Promise<ToolResult> {
+      try {
+        const { stdout, stderr } = await execAsync(args.command, {
+          cwd: ctx.cwd,
+          timeout: args.timeoutMs,
+          maxBuffer: 1024 * 1024 * 4,
+          env: { ...process.env, TERM: "dumb" },
+        });
+        const out = `${stdout ?? ""}${stderr ?? ""}`.trim();
+        return { ok: true, content: out || "(Command succeeded with no output)" };
+      } catch (error) {
+        const err = error as { stdout?: string; stderr?: string; code?: number; message?: string };
+        const body =
+          `${err.stdout ?? ""}${err.stderr ?? ""}`.trim() || err.message || "Unknown error";
+        return { ok: false, content: `Exit code: ${err.code ?? -1}\n${body}` };
+      }
+    },
+  });
+
+  // 2. Read file
+  registry.register({
+    name: "read_file",
+    description: "Read a UTF-8 text file. Returns full file content. Use to inspect source code.",
+    inputSchema: z.object({
+      path: z.string().min(1).describe("File path (absolute or relative to cwd)"),
+      offset: z.number().int().min(0).optional().describe("Start line (0-based)"),
+      limit: z.number().int().positive().optional().describe("Max number of lines to read"),
+    }),
+    isReadOnly: true,
+    async execute(args, ctx): Promise<ToolResult> {
+      try {
+        const fullPath = resolvePath(ctx.cwd, args.path);
+        let content = await readFile(fullPath, "utf8");
+        if (args.offset !== undefined || args.limit !== undefined) {
+          const lines = content.split("\n");
+          const start = args.offset ?? 0;
+          const end = args.limit ? start + args.limit : lines.length;
+          content = lines.slice(start, end).join("\n");
+        }
+        return { ok: true, content: content || "(empty file)" };
+      } catch (error) {
+        return { ok: false, content: String(error) };
+      }
+    },
+  });
+
+  // 3. Write file
+  registry.register({
+    name: "write_file",
+    description:
+      "Write UTF-8 text content to a file. Creates parent directories if needed.",
+    inputSchema: z.object({
+      path: z.string().min(1).describe("File path"),
+      content: z.string().describe("File content to write"),
+    }),
+    isReadOnly: false,
+    async execute(args, ctx): Promise<ToolResult> {
+      try {
+        const fullPath = resolvePath(ctx.cwd, args.path);
+        await mkdir(dirname(fullPath), { recursive: true });
+        await writeFile(fullPath, args.content, "utf8");
+        return { ok: true, content: `Wrote ${args.path} (${args.content.length} chars)` };
+      } catch (error) {
+        return { ok: false, content: String(error) };
+      }
+    },
+  });
+
+  // 4. Edit file (precise string replacement)
+  registry.register({
+    name: "edit_file",
+    description:
+      "Perform exact string replacement in a file. old_string must match exactly one occurrence.",
+    inputSchema: z.object({
+      path: z.string().min(1).describe("File path"),
+      old_string: z.string().min(1).describe("Exact text to find"),
+      new_string: z.string().describe("Replacement text"),
+    }),
+    isReadOnly: false,
+    async execute(args, ctx): Promise<ToolResult> {
+      try {
+        const fullPath = resolvePath(ctx.cwd, args.path);
+        const content = await readFile(fullPath, "utf8");
+        const idx = content.indexOf(args.old_string);
+        if (idx === -1) {
+          return { ok: false, content: "old_string not found in file" };
+        }
+        const lastIdx = content.lastIndexOf(args.old_string);
+        if (idx !== lastIdx) {
+          return {
+            ok: false,
+            content: "old_string matches multiple locations. Provide more context to make it unique.",
+          };
+        }
+        const updated = content.replace(args.old_string, args.new_string);
+        await writeFile(fullPath, updated, "utf8");
+        return { ok: true, content: `Edited ${args.path}` };
+      } catch (error) {
+        return { ok: false, content: String(error) };
+      }
+    },
+  });
+
+  // 5. Glob files
+  registry.register({
+    name: "glob_files",
+    description: "Find files matching a glob pattern in workspace.",
+    inputSchema: z.object({
+      pattern: z.string().min(1).describe("Glob pattern (e.g., '**/*.ts')"),
+    }),
+    isReadOnly: true,
+    async execute(args, ctx): Promise<ToolResult> {
+      try {
+        const files = await fg(args.pattern, {
+          cwd: ctx.cwd,
+          dot: true,
+          onlyFiles: true,
+        });
+        return { ok: true, content: files.join("\n") || "(No files matched)" };
+      } catch (error) {
+        return { ok: false, content: String(error) };
+      }
+    },
+  });
+
+  // 6. Search (grep)
+  registry.register({
+    name: "search",
+    description:
+      "Search file contents using regex. Returns matching lines with file paths and line numbers.",
+    inputSchema: z.object({
+      pattern: z.string().min(1).describe("Regex pattern to search for"),
+      path: z.string().optional().describe("Directory or file to search in (default: cwd)"),
+      glob: z.string().optional().describe("File glob filter (e.g., '*.ts')"),
+    }),
+    isReadOnly: true,
+    async execute(args, ctx): Promise<ToolResult> {
+      try {
+        const searchPath = args.path ? resolvePath(ctx.cwd, args.path) : ctx.cwd;
+        // Check if search target exists
+        await stat(searchPath);
+        const globPart = args.glob ? ` --include='${args.glob}'` : "";
+        const { stdout } = await execAsync(
+          `grep -rn --color=never${globPart} '${args.pattern.replace(/'/g, "'\\''")}' '${searchPath}' | head -100`,
+          { cwd: ctx.cwd, timeout: 15_000, maxBuffer: 1024 * 1024 * 2 },
+        );
+        return { ok: true, content: stdout.trim() || "(No matches)" };
+      } catch (error) {
+        const err = error as { code?: number; stdout?: string };
+        if (err.code === 1) return { ok: true, content: "(No matches)" };
+        return { ok: false, content: String(error) };
+      }
+    },
+  });
+}
