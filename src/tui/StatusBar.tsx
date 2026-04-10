@@ -47,6 +47,12 @@ export function StatusBar({ state }: StatusBarProps): React.ReactElement {
         <Text dimColor>({provider.type})</Text>
       </Box>
       <Box gap={2}>
+        {state.autoRun && (
+          <>
+            <Text color="yellow" bold>AUTORUN</Text>
+            <Text dimColor>|</Text>
+          </>
+        )}
         <Text dimColor>
           tokens: {usage.totalTokens.toLocaleString()}
         </Text>

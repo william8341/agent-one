@@ -218,4 +218,110 @@ export function registerBuiltinTools(registry: ToolRegistry): void {
       }
     },
   });
+
+  // 7. List directory
+  registry.register({
+    name: "list_dir",
+    description:
+      "List directory contents with file types and sizes. Use to explore project structure.",
+    inputSchema: z.object({
+      path: z.string().default(".").describe("Directory path (default: cwd)"),
+      depth: z.number().int().min(1).max(5).default(1).describe("Recursion depth (1-5)"),
+    }),
+    isReadOnly: true,
+    async execute(args, ctx): Promise<ToolResult> {
+      try {
+        const p = args.path ?? ".";
+        const d = args.depth ?? 1;
+        const fullPath = resolvePath(ctx.cwd, p);
+        const { stdout } = await execAsync(
+          `find '${fullPath}' -maxdepth ${d} -not -path '*/node_modules/*' -not -path '*/.git/*' | head -200`,
+          { cwd: ctx.cwd, timeout: 10_000, maxBuffer: 1024 * 1024 },
+        );
+        return { ok: true, content: stdout.trim() || "(Empty directory)" };
+      } catch (error) {
+        return { ok: false, content: String(error) };
+      }
+    },
+  });
+
+  // 8. Web fetch
+  registry.register({
+    name: "web_fetch",
+    description:
+      "Fetch content from a URL. Returns the response body as text (HTML/JSON/plain). Use for APIs and web pages.",
+    inputSchema: z.object({
+      url: z.string().url().describe("URL to fetch"),
+      method: z.enum(["GET", "POST"]).default("GET").describe("HTTP method"),
+      headers: z.array(z.object({
+        name: z.string(),
+        value: z.string(),
+      })).optional().describe("HTTP headers as name/value pairs"),
+      body: z.string().optional().describe("Request body (for POST)"),
+    }),
+    isReadOnly: true,
+    async execute(args): Promise<ToolResult> {
+      try {
+        const headerObj: Record<string, string> = {};
+        if (args.headers) {
+          for (const h of args.headers) headerObj[h.name] = h.value;
+        }
+        const init: RequestInit = {
+          method: args.method,
+          headers: Object.keys(headerObj).length > 0 ? headerObj : undefined,
+          body: args.body,
+        };
+        const res = await fetch(args.url, init);
+        const text = await res.text();
+        const truncated = text.length > 10_000 ? text.slice(0, 10_000) + "\n...(truncated)" : text;
+        return {
+          ok: res.ok,
+          content: `HTTP ${res.status}\n${truncated}`,
+        };
+      } catch (error) {
+        return { ok: false, content: String(error) };
+      }
+    },
+  });
+
+  // 9. Todo write (task tracking in agent loop)
+  registry.register({
+    name: "todo_write",
+    description:
+      "Create or update a task list to track progress. Use when working on multi-step tasks.",
+    inputSchema: z.object({
+      todos: z.array(z.object({
+        content: z.string().describe("Task description"),
+        status: z.enum(["pending", "in_progress", "completed"]),
+      })).describe("Full todo list (replaces previous)"),
+    }),
+    isReadOnly: true,
+    async execute(args): Promise<ToolResult> {
+      const icons = { pending: "○", in_progress: "◐", completed: "●" };
+      const lines = args.todos.map(
+        (t: { content: string; status: "pending" | "in_progress" | "completed" }) =>
+          `  ${icons[t.status]} ${t.content}`,
+      );
+      return { ok: true, content: "Tasks:\n" + lines.join("\n") };
+    },
+  });
+
+  // 10. Ask user (interactive question in agent loop)
+  registry.register({
+    name: "ask_user",
+    description:
+      "Ask the user a clarifying question when you need more information. The user's answer will be returned.",
+    inputSchema: z.object({
+      question: z.string().min(1).describe("The question to ask the user"),
+    }),
+    isReadOnly: true,
+    async execute(args): Promise<ToolResult> {
+      // In TUI mode, the question is shown and the agent loop will pause
+      // until the next user message provides the answer.
+      return {
+        ok: true,
+        content: `[QUESTION FOR USER] ${args.question}\n\nPlease wait for the user's response.`,
+      };
+    },
+  });
 }

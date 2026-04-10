@@ -177,7 +177,7 @@ async function main() {
   const { waitUntilExit } = render(
     React.createElement(App, { provider, skills, cwd, customModels }),
     {
-      exitOnCtrlC: true,
+      exitOnCtrlC: false,
     },
   );
 

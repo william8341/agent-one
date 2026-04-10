@@ -269,6 +269,24 @@ const configCommand: LocalCommand = {
   },
 };
 
+const autorunCommand: LocalCommand = {
+  type: "local",
+  name: "autorun",
+  aliases: ["yolo"],
+  description: "Toggle auto-approve all tool operations (skip permission dialogs)",
+  async execute(_args, ctx) {
+    const current = ctx.getState().autoRun;
+    const next = !current;
+    ctx.setState((s) => ({ ...s, autoRun: next }));
+    return {
+      type: "text",
+      value: next
+        ? "AutoRun ON — all tool operations will be auto-approved without confirmation."
+        : "AutoRun OFF — tool operations will require manual approval.",
+    };
+  },
+};
+
 const exitCommand: LocalCommand = {
   type: "local",
   name: "exit",
@@ -499,6 +517,7 @@ export function createBuiltinCommands(): Command[] {
     statusCommand,
     skillsCommand,
     configCommand,
+    autorunCommand,
     exitCommand,
     // ── prompt commands ──
     commitCommand,

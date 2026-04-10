@@ -6,9 +6,11 @@
  *   local     → execute locally, display result text. No agent loop.
  *   prompt    → expand to prompt string, feed into agent.runStreaming().
  *   local-jsx → (reserved) same as local for now.
+ *
+ * Sub-agent events bubble up via onSubAgentEvent with depth for indentation.
  */
 import React, { useCallback, useEffect, useRef } from "react";
-import { Box, useApp } from "ink";
+import { Box, useApp, useInput } from "ink";
 import { Logo } from "./Logo.js";
 import { StatusBar } from "./StatusBar.js";
 import { MessageList } from "./MessageList.js";
@@ -41,6 +43,7 @@ function createInitialState(provider: ProviderConfig): AppState {
     historyIndex: -1,
     showPermission: null,
     errorMessage: null,
+    autoRun: false,
   };
 }
 
@@ -64,6 +67,137 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
   const { exit } = useApp();
   const agentRef = useRef<Agent | null>(null);
 
+  // ─── Helper: push a sub-agent event into the message list ─────────
+  const handleSubAgentEvent = useCallback(
+    (event: AgentEvent) => {
+      switch (event.type) {
+        case "skill_start": {
+          store.setState((s) => ({
+            ...s,
+            messages: [
+              ...s.messages,
+              {
+                id: nextId(),
+                role: "system" as const,
+                content: `▶ [${event.skillName}] ${event.task}`,
+                timestamp: Date.now(),
+                depth: event.depth,
+              },
+            ],
+          }));
+          break;
+        }
+        case "text_delta": {
+          // Accumulate into the last streaming assistant message at this depth
+          store.setState((s) => {
+            const msgs = [...s.messages];
+            // Find the last streaming assistant msg at this depth
+            let idx = -1;
+            for (let i = msgs.length - 1; i >= 0; i--) {
+              const m = msgs[i]!;
+              if (m.role === "assistant" && m.isStreaming && (m.depth ?? 0) === event.depth) {
+                idx = i;
+                break;
+              }
+            }
+            if (idx >= 0) {
+              msgs[idx] = {
+                ...msgs[idx]!,
+                content: msgs[idx]!.content + event.text,
+                timestamp: Date.now(),
+              };
+            } else {
+              msgs.push({
+                id: nextId(),
+                role: "assistant" as const,
+                content: event.text,
+                timestamp: Date.now(),
+                isStreaming: true,
+                depth: event.depth,
+              });
+            }
+            return { ...s, messages: msgs };
+          });
+          break;
+        }
+        case "tool_call": {
+          store.setState((s) => ({
+            ...s,
+            messages: [
+              ...s.messages,
+              {
+                id: nextId(),
+                role: "tool" as const,
+                content: "",
+                toolName: event.toolName,
+                toolArgs: event.argsSummary,
+                timestamp: Date.now(),
+                depth: event.depth,
+              },
+            ],
+          }));
+          break;
+        }
+        case "tool_result": {
+          store.setState((s) => ({
+            ...s,
+            messages: [
+              ...s.messages,
+              {
+                id: nextId(),
+                role: "tool" as const,
+                content: event.result.content,
+                toolName: event.toolName,
+                timestamp: Date.now(),
+                isError: !event.result.ok,
+                depth: event.depth,
+              },
+            ],
+          }));
+          break;
+        }
+        case "skill_end": {
+          // Finalize any streaming sub-agent text at this depth
+          store.setState((s) => {
+            const msgs = s.messages.map((m) =>
+              m.role === "assistant" && m.isStreaming && (m.depth ?? 0) === event.depth
+                ? { ...m, isStreaming: false }
+                : m,
+            );
+            msgs.push({
+              id: nextId(),
+              role: "system" as const,
+              content: `${event.ok ? "✓" : "✗"} [${event.skillName}] ${event.ok ? "completed" : "failed"}`,
+              timestamp: Date.now(),
+              depth: event.depth,
+            });
+            return { ...s, messages: msgs };
+          });
+          break;
+        }
+        case "error": {
+          store.setState((s) => ({
+            ...s,
+            messages: [
+              ...s.messages,
+              {
+                id: nextId(),
+                role: "system" as const,
+                content: `Error: ${event.error}`,
+                timestamp: Date.now(),
+                isError: true,
+                depth: event.depth,
+              },
+            ],
+          }));
+          break;
+        }
+        // usage, done, turn_complete — ignored for sub-agents display
+      }
+    },
+    [store],
+  );
+
   // Build agent on provider change
   useEffect(() => {
     const currentProvider = store.getState().provider;
@@ -73,6 +207,9 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
     const agent = new Agent(llm, registry, skills, { cwd });
 
     agent.onPermissionRequest = (toolName, args) => {
+      if (store.getState().autoRun) {
+        return Promise.resolve(true);
+      }
       return new Promise<boolean>((resolve) => {
         store.setState((s) => ({
           ...s,
@@ -81,10 +218,13 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
       });
     };
 
-    agentRef.current = agent;
-  }, [state.provider, skills, cwd, store]);
+    // Wire up sub-agent event handler
+    agent.onSubAgentEvent = handleSubAgentEvent;
 
-  // ─── Build command context (shared by all command types) ──────────────
+    agentRef.current = agent;
+  }, [state.provider, skills, cwd, store, handleSubAgentEvent]);
+
+  // ─── Build command context ────────────────────────────────────────────
   const buildCommandCtx = useCallback((): CommandContext => ({
     setState: (fn) => store.setState(fn),
     getState: () => store.getState(),
@@ -93,16 +233,16 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
     skills,
   }), [store, customModels, cwd, skills]);
 
-  // ─── Run agent streaming loop (reusable for both natural lang & prompt commands)
+  // ─── Run agent streaming loop ─────────────────────────────────────────
   const runAgent = useCallback(
     async (prompt: string, displayAsUser?: string) => {
-      // Show what the user typed (or the command name) as user message
       const userContent = displayAsUser ?? prompt;
       const userMsg: UIMessage = {
         id: nextId(),
         role: "user",
         content: userContent,
         timestamp: Date.now(),
+        depth: 0,
       };
       store.setState((s) => ({
         ...s,
@@ -130,6 +270,7 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
                   content: assistantText,
                   timestamp: Date.now(),
                   isStreaming: true,
+                  depth: 0,
                 };
                 if (existing >= 0) {
                   msgs[existing] = msg;
@@ -141,10 +282,25 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
               break;
             }
             case "tool_call": {
-              store.setState((s) => ({ ...s, status: "tool_running" }));
+              const callMsg: UIMessage = {
+                id: nextId(),
+                role: "tool",
+                content: "",
+                toolName: event.toolName,
+                toolArgs: event.argsSummary,
+                timestamp: Date.now(),
+                depth: event.depth,
+              };
+              store.setState((s) => ({
+                ...s,
+                status: "tool_running",
+                messages: [...s.messages, callMsg],
+              }));
               break;
             }
             case "tool_result": {
+              // Skip displaying use_skill result — sub-agent events already shown
+              if (event.toolName === "use_skill") break;
               const toolMsg: UIMessage = {
                 id: nextId(),
                 role: "tool",
@@ -152,6 +308,7 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
                 toolName: event.toolName,
                 timestamp: Date.now(),
                 isError: !event.result.ok,
+                depth: event.depth,
               };
               store.setState((s) => ({ ...s, messages: [...s.messages, toolMsg] }));
               break;
@@ -173,6 +330,7 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
                     role: "assistant",
                     content: event.finalText,
                     timestamp: Date.now(),
+                    depth: 0,
                   });
                 }
                 return { ...s, messages: msgs, status: "idle" };
@@ -188,11 +346,12 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
                   ...s.messages,
                   {
                     id: nextId(),
-                    role: "system",
+                    role: "system" as const,
                     content: `Error: ${event.error}`,
                     timestamp: Date.now(),
                     isError: true,
-                  } as UIMessage,
+                    depth: event.depth,
+                  },
                 ],
               }));
               break;
@@ -208,11 +367,11 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
             ...s.messages,
             {
               id: nextId(),
-              role: "system",
+              role: "system" as const,
               content: `Error: ${String(error)}`,
               timestamp: Date.now(),
               isError: true,
-            } as UIMessage,
+            },
           ],
         }));
       }
@@ -225,7 +384,6 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
   // ─── Handle input submission ─────────────────────────────────────────
   const handleSubmit = useCallback(
     async (input: string) => {
-      // Save to history
       store.setState((s) => ({
         ...s,
         inputHistory: [...s.inputHistory, input],
@@ -233,7 +391,6 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
         errorMessage: null,
       }));
 
-      // ── Slash command dispatch ──────────────────────────────────────
       const parsed = parseSlashCommand(input);
       if (parsed) {
         const commands = createBuiltinCommands();
@@ -243,7 +400,6 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
           const ctx = buildCommandCtx();
 
           switch (matched.type) {
-            // ─── LOCAL: execute locally, no agent loop ────────────────
             case "local":
             case "local-jsx": {
               const result = await matched.execute(parsed.args, ctx);
@@ -263,6 +419,7 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
                   }));
                   return;
                 case "clear":
+                  agentRef.current?.resetConversation();
                   store.setState((s) => ({
                     ...s,
                     messages: [],
@@ -275,7 +432,6 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
               return;
             }
 
-            // ─── PROMPT: expand to prompt, send to agent loop ─────────
             case "prompt": {
               const prompt = await matched.getPrompt(parsed.args, ctx);
               await runAgent(prompt, input);
@@ -284,7 +440,6 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
           }
         }
 
-        // Unknown slash command — show as error
         store.setState((s) => ({
           ...s,
           messages: [
@@ -301,7 +456,6 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
         return;
       }
 
-      // ── Natural language input → agent loop ────────────────────────
       await runAgent(input);
     },
     [store, buildCommandCtx, runAgent],
@@ -315,6 +469,59 @@ export function App({ provider, skills, cwd, customModels }: AppProps): React.Re
   );
 
   const isProcessing = state.status !== "idle" && state.status !== "error";
+
+  // ─── Ctrl+C: double-press to abort agent / exit app ────────────────
+  const lastCtrlCRef = useRef<number>(0);
+
+  const handleCtrlC = useCallback(() => {
+    const now = Date.now();
+    const elapsed = now - lastCtrlCRef.current;
+    lastCtrlCRef.current = now;
+
+    const processing = store.getState().status !== "idle" && store.getState().status !== "error";
+
+    if (processing) {
+      if (elapsed < 1500) {
+        agentRef.current?.abort();
+        store.setState((s) => ({
+          ...s,
+          status: "idle",
+          messages: [
+            ...s.messages,
+            { id: nextId(), role: "system" as const, content: "Agent interrupted.", timestamp: Date.now() },
+          ],
+        }));
+      } else {
+        agentRef.current?.abort();
+        store.setState((s) => ({
+          ...s,
+          messages: [
+            ...s.messages,
+            { id: nextId(), role: "system" as const, content: "Interrupting... press Ctrl+C again to force stop.", timestamp: Date.now() },
+          ],
+        }));
+      }
+    } else {
+      if (elapsed < 1500) {
+        exit();
+      } else {
+        store.setState((s) => ({
+          ...s,
+          messages: [
+            ...s.messages,
+            { id: nextId(), role: "system" as const, content: "Press Ctrl+C again to exit.", timestamp: Date.now() },
+          ],
+        }));
+      }
+    }
+  }, [store, exit]);
+
+  // Ink captures Ctrl+C as raw input in raw mode — catch it via useInput
+  useInput((input, key) => {
+    if (input === "c" && key.ctrl) {
+      handleCtrlC();
+    }
+  });
 
   return (
     <Box flexDirection="column" height="100%">

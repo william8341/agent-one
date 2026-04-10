@@ -101,10 +101,13 @@ export interface UIMessage {
   role: LlmRole;
   content: string;
   toolName?: string;
+  toolArgs?: string;
   toolCallId?: string;
   timestamp: number;
   isStreaming?: boolean;
   isError?: boolean;
+  /** Nesting depth: 0 = top-level, 1 = sub-agent, 2 = sub-sub-agent, etc. */
+  depth?: number;
 }
 
 export interface AppState {
@@ -116,6 +119,7 @@ export interface AppState {
   historyIndex: number;
   showPermission: PermissionRequest | null;
   errorMessage: string | null;
+  autoRun: boolean;
 }
 
 // ─── Permission ──────────────────────────────────────────────────────────
