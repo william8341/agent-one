@@ -45,6 +45,7 @@ function buildDefaultSystemPrompt(skills: Skill[], tools: Tool[]): string {
     "- Only make changes that are directly requested.",
     "- Avoid introducing security vulnerabilities.",
     "- When a command fails, read the error carefully, gather more info, identify root cause, then try a different approach.",
+    "- For problems that may repeat, use memory_search early; after a verified fix, offer memory_save (no secrets; use mark_private or redact sensitive bits).",
     "",
     "## Available Skills",
     skillsText,

@@ -1,5 +1,5 @@
 /**
- * Tool system — Registry + 6 built-in tools.
+ * Tool system — Registry + built-in tools (file, shell, search, memory, …).
  * Schema-driven with Zod validation + automatic JSON Schema generation for LLM.
  */
 import { exec } from "node:child_process";
@@ -10,6 +10,7 @@ import fg from "fast-glob";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { Tool, ToolContext, ToolResult } from "./types.js";
+import { deleteSolution, saveSolution, searchSolutions, SOLUTIONS_DIR } from "./solution-memory.js";
 
 const execAsync = promisify(exec);
 
@@ -322,6 +323,93 @@ export function registerBuiltinTools(registry: ToolRegistry): void {
         ok: true,
         content: `[QUESTION FOR USER] ${args.question}\n\nPlease wait for the user's response.`,
       };
+    },
+  });
+
+  // 11–13. Local solution memory (~/.agent-one/solutions/)
+  registry.register({
+    name: "memory_search",
+    description:
+      "Search past saved successful solutions (local Markdown under ~/.agent-one/solutions). " +
+      "Use before tackling a problem that may resemble a previous fix. " +
+      "Private entries are omitted unless include_private is true.",
+    inputSchema: z.object({
+      query: z
+        .string()
+        .describe(
+          "Keywords to match against title, problem, solution, tags (space-separated AND match)",
+        ),
+      tags: z.array(z.string()).optional().describe("Optional: all of these tags must match"),
+      include_private: z
+        .boolean()
+        .default(false)
+        .describe("Set true only to include entries marked private"),
+      limit: z.number().int().positive().max(20).default(5),
+    }),
+    isReadOnly: true,
+    async execute(args): Promise<ToolResult> {
+      try {
+        const text = await searchSolutions({
+          query: args.query,
+          tags: args.tags ?? [],
+          includePrivate: args.include_private ?? false,
+          limit: args.limit ?? 5,
+        });
+        return { ok: true, content: text };
+      } catch (error) {
+        return { ok: false, content: String(error) };
+      }
+    },
+  });
+
+  registry.register({
+    name: "memory_save",
+    description:
+      "Save a successful fix to local memory for future sessions. " +
+      "Omit secrets; use mark_private for sensitive-but-needed notes, or redact before saving. " +
+      `Stored under ${SOLUTIONS_DIR}`,
+    inputSchema: z.object({
+      title: z.string().min(1).describe("Short name for this solution"),
+      problem: z.string().min(1).describe("What was wrong or the error context (no secrets)"),
+      solution: z.string().min(1).describe("What worked: commands, files changed, verification"),
+      tags: z.array(z.string()).default([]).describe("Labels for search, e.g. npm, docker, oracle"),
+      mark_private: z
+        .boolean()
+        .default(false)
+        .describe("If true, entry is hidden from default memory_search"),
+    }),
+    isReadOnly: false,
+    async execute(args): Promise<ToolResult> {
+      try {
+        const { id, path } = await saveSolution({
+          title: args.title,
+          problem: args.problem,
+          solution: args.solution,
+          tags: args.tags ?? [],
+          markPrivate: args.mark_private ?? false,
+        });
+        return {
+          ok: true,
+          content: `Saved solution id=${id}\nfile=${path}`,
+        };
+      } catch (error) {
+        return { ok: false, content: String(error) };
+      }
+    },
+  });
+
+  registry.register({
+    name: "memory_delete",
+    description:
+      "Permanently delete a saved solution by id (from memory_save output or memory_search heading). " +
+      "Use to remove obsolete or accidentally stored entries.",
+    inputSchema: z.object({
+      id: z.string().min(1).describe("Solution id, e.g. sol-1730000000000-abc123"),
+    }),
+    isReadOnly: false,
+    async execute(args): Promise<ToolResult> {
+      const r = await deleteSolution(args.id.trim());
+      return { ok: r.ok, content: r.message };
     },
   });
 }

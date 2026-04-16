@@ -1,0 +1,36 @@
+{
+  "goal": "Review the code and run tests",
+  "steps": [
+    {
+      "id": "review",
+      "agent": "code_reviewer",
+      "task": "Review recent changes and list risks in markdown",
+      "depends_on": [],
+      "retry": 0,
+      "acceptance": [
+        "List severity and rationale",
+        "Call out missing tests"
+      ]
+    },
+    {
+      "id": "test",
+      "agent": "test_runner",
+      "task": "npm test",
+      "depends_on": [
+        "review"
+      ],
+      "retry": 0,
+      "acceptance": [
+        "Return test summary output"
+      ]
+    }
+  ],
+  "final_aggregation": {
+    "format": "markdown",
+    "sections": [
+      "Conclusion",
+      "Risks",
+      "Next Actions"
+    ]
+  }
+}
