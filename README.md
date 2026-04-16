@@ -1,6 +1,6 @@
 # agent-one
 
-`agent-one` is an enterprise AI agent CLI with TUI and task execution APIs.
+`agent-one` is an enterprise AI agent CLI with TUI and task execution APIs，Lightweight Claude Code.
 
 ## Install and Run TUI
 
