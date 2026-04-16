@@ -2,6 +2,17 @@
 
 `agent-one` is an enterprise AI agent CLI with TUI and task execution APIs.
 
+## Install and Run TUI
+
+```bash
+npm install
+npm run build
+npm link
+agent-one
+```
+
+`npm link` installs the local `agent-one` command into your PATH. Running `agent-one` without arguments starts the TUI.
+
 ## Local solution memory
 
 Successful fixes can be stored under `~/.agent-one/solutions/` as Markdown (YAML frontmatter). The agent can call tools `memory_search`, `memory_save`, and `memory_delete`. Mark sensitive notes with `mark_private` (hidden from default search) or edit/delete files on disk to remove data.
