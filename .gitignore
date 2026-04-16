@@ -23,3 +23,6 @@ __pycache__/
 
 # Local secrets (never commit)
 **/.vault_key
+
+# Skills: keep local / private; not tracked by default (Oracle scripts, vault, outputs, etc.)
+skills/

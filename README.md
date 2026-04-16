@@ -6,6 +6,10 @@
 
 Successful fixes can be stored under `~/.agent-one/solutions/` as Markdown (YAML frontmatter). The agent can call tools `memory_search`, `memory_save`, and `memory_delete`. Mark sensitive notes with `mark_private` (hidden from default search) or edit/delete files on disk to remove data.
 
+## Skills directory (`skills/`)
+
+The `skills/` folder is listed in `.gitignore` so local or sensitive skill definitions (scripts, Oracle assets, run outputs) are **not** committed. Add your own `skills/` beside the project; clones get an empty skills tree until you copy them in. To ship example skills publicly, use a separate repo or release artifact.
+
 ## Team MVP (Hybrid Mode B)
 
 This repository includes an MVP team runner where:
