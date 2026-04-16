@@ -1,0 +1,32 @@
+{
+  "models": [
+      {
+        "id": "ollama-gpt-oss:120b-cloud",
+        "value": "gpt-oss:120b-cloud",
+        "label": "Ollama gpt-oss:120b-cloud",
+        "description": "gpt-oss:120b-cloud via Ollama (local)",
+        "provider": "ollama",
+        "baseURL": "http://localhost:11434",
+        "apiKey": "ollama"
+      },
+    {
+      "id": "ollama-qwen3-8b",
+      "value": "qwen3:8b",
+      "label": "Ollama Qwen3 8B",
+      "description": "Qwen3 8B via Ollama (local)",
+      "provider": "ollama",
+      "baseURL": "http://localhost:11434",
+      "apiKey": "ollama"
+    },
+    {
+      "id": "ollama-gpt-oss:20b-cloud",
+      "value": "gpt-oss:20b-cloud",
+      "label": "Ollama gpt-oss:20b-cloud ",
+      "description": "gpt-oss:20b-cloud Ollama (local)",
+      "provider": "ollama",
+      "baseURL": "http://localhost:11434",
+      "apiKey": "ollama"
+    }
+    
+  ]
+}
