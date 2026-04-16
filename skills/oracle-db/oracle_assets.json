@@ -1,0 +1,20 @@
+{
+  "instances": [
+    {
+      "name": "orclm",
+      "ip": "192.168.51.120",
+      "port": 1521,
+      "db_query_user": "testuser",
+      "db_query_user_password": "enc:gAAAAABpxfP9tBGolmaUxmP_URgI1QcJCq23hofxUuNF5sZscch3HiMMwcVyuUNiynqLINty7ODoEUiDV3WPO-rEtb1kZ7PXYA==",
+      "sysdba_user": "sys",
+      "sysdba_user_password": "enc:gAAAAABpxfP9K47GttPieoUjLr_JfMoPtw8zp3uEb7BTUNHYbKvro3COyMcM4cw7jsK24f8DBNK_N6hpSsQLg==",
+      "business_system": "",
+      "description": "备库（切换后），正在应用日志",
+      "sid": "orclm",
+      "os_user": "oracle",
+      "os_password": "enc:gAAAAABpxfP9GqTUzO5ydsortkjlqwx8Yvu5irSArblydyC3XBJs2dOpujpcl3eS1fBEbXMcM4cw7jsK24f8DBNK_N6hpSsQLg==",
+      "os_ssh_port": 22,
+      "adg_peer": "orcldg"
+    }
+  ]
+}

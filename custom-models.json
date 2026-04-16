@@ -1,0 +1,86 @@
+{
+  "models": [
+      {
+        "id": "ollama-gpt-oss:120b-cloud",
+        "value": "gpt-oss:120b-cloud",
+        "label": "Ollama gpt-oss:120b-cloud",
+        "description": "gpt-oss:120b-cloud via Ollama (local)",
+        "provider": "ollama",
+        "baseURL": "http://localhost:11434",
+        "apiKey": "ollama"
+      },
+    {
+      "id": "ollama-qwen3-8b",
+      "value": "qwen3:8b",
+      "label": "Ollama Qwen3 8B",
+      "description": "Qwen3 8B via Ollama (local)",
+      "provider": "ollama",
+      "baseURL": "http://localhost:11434",
+      "apiKey": "ollama"
+    },
+    {
+      "id": "ollama-gpt-oss:20b-cloud",
+      "value": "gpt-oss:20b-cloud",
+      "label": "Ollama gpt-oss:20b-cloud ",
+      "description": "gpt-oss:20b-cloud Ollama (local)",
+      "provider": "ollama",
+      "baseURL": "http://localhost:11434",
+      "apiKey": "ollama"
+    },
+    {
+      "id": "ollama-gpt-oss:120b-cloud",
+      "value": "gpt-oss:120b-cloud",
+      "label": "Ollama gpt-oss:120b-cloud",
+      "description": "gpt-oss:120b-cloud via Ollama (local)",
+      "provider": "ollama",
+      "baseURL": "http://localhost:11434",
+      "apiKey": "ollama"
+    },
+    {
+      "id": "ollama-metona-qwopus3.5.v3-9b-q8",
+      "value": "Metona/qwopus3.5.v3:9b-q8",
+      "label": "ollama Metona QwOpus 3.5 V3 9B Q8",
+      "description": "Metona QwOpus 3.5 V3 9B Q8 via Ollama (local)",
+      "provider": "ollama",
+      "baseURL": "http://localhost:11434",
+      "apiKey": "ollama"
+    },
+    {
+      "id": "openrouter-qwen36-plus",
+      "value": "qwen/qwen3.6-plus:free",
+      "label": "OpenRouter Qwen 3.6 Plus (Free)",
+      "description": "Qwen 3.6 Plus via OpenRouter · 1M context · Free",
+      "provider": "openrouter",
+      "baseURL": "https://openrouter.ai/api",
+      "apiKey": "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"
+    },
+    {
+      "id": "step-3.5-flash:free",
+      "value": "stepfun/step-3.5-flash:free",
+      "label": "Step 3.5 Flash",
+      "description": "OpenRouter Step 3.5 Flash.",
+      "provider": "openrouter",
+      "baseURL": "https://openrouter.ai/api",
+      "apiKey": "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"
+    },
+    {
+      "id": "glm-4.5-air:free",
+      "value": "z-ai/glm-4.5-air:free",
+      "label": "glm-4.5-air:free",
+      "description": "openrouter glm-4.5-air:free",
+      "provider": "openrouter",
+      "baseURL": "https://openrouter.ai/api",
+      "apiKey": "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"
+    },
+    {
+      "id": "minimax-m2.5:free",
+      "value": "minimax/minimax-m2.5:free",
+      "label": "openrouter minimax-m2.5:free",
+      "description": "openrouter minimax-m2.5:free.",
+      "provider": "openrouter",
+      "baseURL": "https://openrouter.ai/api",
+      "apiKey": "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"
+    }
+    
+  ]
+}

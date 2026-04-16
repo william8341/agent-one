@@ -1,0 +1,26 @@
+[agents.oracle-dba-agent]
+name        = "oracle-dba-agent"
+description = "oracle-dba-agent（由 register 自动生成描述）"
+command     = "oracle-dba-agent"
+keywords    = []
+domains     = []
+input_format = "markdown"
+timeout     = 120
+enabled     = true
+
+  [agents.oracle-dba-agent.env]
+
+  [agents.oracle-dba-agent.task_types]
+  general = "通用子任务：分析与排查"
+[dispatch]
+decompose_strategy  = "parallel"
+max_parallel_agents = 4
+result_merge        = "summarize"
+show_plan           = true
+confirm_before_run  = false
+
+[output]
+save_results  = true
+results_dir   = "${HOME}/.agent-dispatch/results"
+format        = "markdown"
+timestamp     = true

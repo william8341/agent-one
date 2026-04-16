@@ -1,0 +1,53 @@
+# Team members used by "agent-one team execute"
+members:
+  - name: code_reviewer
+    description: Review code changes and provide risk-focused findings.
+    command:
+      - "node"
+      - "dist/index.js"
+      - "run"
+      - "{{task}}"
+      - "--cwd"
+      - "{{workspace}}"
+      - "--format"
+      - "markdown"
+    timeoutSec: 180
+
+  - name: test_runner
+    description: Execute project tests.
+    command:
+      - "bash"
+      - "-lc"
+      - "{{task}}"
+    timeoutSec: 180
+
+  - name: oracle_dba_agent
+    description: >
+      Oracle DBA specialist. Must call real oracle-dba-agent CLI via Bash-compatible command.
+      Intended tasks: Oracle DBA analysis, terminal/repo work, background jobs with status/result/cancel flow.
+    command:
+      - "oracle-dba-agent"
+      - "run"
+      - "{{task}}"
+      - "--cwd"
+      - "{{workspace}}"
+      - "--format"
+      - "markdown"
+#    env:
+#      ORACLE_DBA_FORMAT: "{{inputs.format}}"
+#      ORACLE_DBA_EXTRA_FLAGS: "{{inputs.extra_flags}}"
+    timeoutSec: 300
+    
+  - name: doris_dba_agent
+    description: >
+      doris DBA specialist. Must call real doris-dba-agent CLI via Bash-compatible command.
+      Intended tasks: doris DBA analysis, terminal/repo work, background jobs with status/result/cancel flow.
+    command:
+      - "doris-dba-agent"
+      - "run"
+      - "{{task}}"
+      - "--cwd"
+      - "{{workspace}}"
+      - "--format"
+      - "markdown"
+    timeoutSec: 300

@@ -1,0 +1,11 @@
+  DBMS_WORKLOAD_REPOSITORY.AWR_REPORT_TEXT(
+  *
+ERROR at line 3:
+ORA-20019: Invalid snapshots specified. End_snap must be greater than begin_snap.
+ORA-06512: at "SYS.DBMS_SWRF_REPORT_INTERNAL", line 10791
+ORA-06512: at "SYS.DBMS_SWRF_REPORT_INTERNAL", line 1290
+ORA-06512: at "SYS.DBMS_WORKLOAD_REPOSITORY", line 889
+ORA-06512: at line 1
+Help: https://docs.oracle.com/error-help/db/ora-20019/
+
+

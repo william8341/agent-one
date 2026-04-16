@@ -1,0 +1,26 @@
+#!/usr/bin/expect -f
+set timeout 30
+set password [lindex $argv 0]
+set host [lindex $argv 1]
+set sql [lindex $argv 2]
+
+spawn ssh -o StrictHostKeyChecking=no oracle@$host
+expect {
+    "password:" {
+        send "$password\r"
+        expect "~$"
+    }
+}
+
+send "ORACLE_HOME=/u01/app/oracle/product/11.2.0.4/dbhome_1\r"
+expect "~$"
+send "export ORACLE_SID=orclm\r"
+expect "~$"
+send "/u01/app/oracle/product/11.2.0.4/dbhome_1/bin/sqlplus -s / as sysdba <<EOF\r"
+expect "SQL>"
+send "$sql\r"
+expect "SQL>"
+send "EXIT\r"
+expect "~$"
+send "exit\r"
+expect eof

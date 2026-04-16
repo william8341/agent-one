@@ -369,6 +369,42 @@ export class LlmClient {
   }
 }
 
+// ─── Env API keys (ignore placeholders that would hit OpenAI with Bearer "ollama") ─
+
+const PLACEHOLDER_API_KEYS = new Set([
+  "ollama",
+  "none",
+  "dummy",
+  "placeholder",
+  "sk-placeholder",
+  "changeme",
+  "your-api-key",
+]);
+
+export function isPlaceholderApiKeyValue(key: string | undefined): boolean {
+  const k = key?.trim().toLowerCase();
+  if (!k) return true;
+  return PLACEHOLDER_API_KEYS.has(k);
+}
+
+/** Treat empty / common dummy values as “no key” so custom-models.json is not skipped. */
+export function effectiveOpenAiApiKeyFromEnv(): string | undefined {
+  const k = process.env.OPENAI_API_KEY?.trim();
+  if (!k || isPlaceholderApiKeyValue(k)) return undefined;
+  return k;
+}
+
+export function effectiveAnthropicApiKeyFromEnv(): string | undefined {
+  const k = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!k || isPlaceholderApiKeyValue(k)) return undefined;
+  return k;
+}
+
+/** Real cloud credentials in env (not placeholders). */
+export function hasEffectiveCloudApiKeys(): boolean {
+  return Boolean(effectiveOpenAiApiKeyFromEnv() || effectiveAnthropicApiKeyFromEnv());
+}
+
 // ─── Custom Models Loader ────────────────────────────────────────────────
 
 /** Map a custom-models.json provider string to our internal ProviderType */
@@ -395,11 +431,17 @@ function normaliseBaseUrl(baseURL: string, providerType: ProviderType): string {
 /** Convert a CustomModelEntry to a ProviderConfig */
 export function customModelToProvider(entry: CustomModelEntry): ProviderConfig {
   const type = mapProviderType(entry.provider);
+  let apiKey = entry.apiKey;
+  if (type === "ollama") {
+    if (!apiKey?.trim() || isPlaceholderApiKeyValue(apiKey)) {
+      apiKey = undefined;
+    }
+  }
   return {
     type,
     model: entry.value,
     baseUrl: normaliseBaseUrl(entry.baseURL, type),
-    apiKey: entry.apiKey,
+    apiKey,
   };
 }
 

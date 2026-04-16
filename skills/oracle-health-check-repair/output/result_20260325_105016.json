@@ -1,0 +1,103 @@
+{
+  "check_time": "2026-03-25T10:50:16",
+  "connection": {
+    "host": "192.168.51.120",
+    "port": "1521",
+    "user": "testuser",
+    "sid": "orclm",
+    "version": "11.2.0.4.0",
+    "status": "OPEN"
+  },
+  "overall_status": "WARNING",
+  "issues_found": 2,
+  "checks": [
+    {
+      "id": "01",
+      "name": "tablespace",
+      "status": "OK",
+      "message": "All tablespaces below 85%",
+      "details": [],
+      "need_fix": false,
+      "fix_script": "fix_tablespace.sh"
+    },
+    {
+      "id": "02",
+      "name": "session",
+      "status": "WARNING",
+      "message": "       1 blocking session(s) found",
+      "details": [
+        {
+          "blocker": "59",
+          "serial": 62811,
+          "username": "TESTUSER",
+          "wait_seconds": 0
+        }
+      ],
+      "need_fix": true,
+      "fix_script": "fix_kill_session.sh"
+    },
+    {
+      "id": "03",
+      "name": "undo",
+      "status": "OK",
+      "message": "UNDO usage below 80%",
+      "details": [],
+      "need_fix": false,
+      "fix_script": "fix_undo_extend.sh"
+    },
+    {
+      "id": "04",
+      "name": "archive",
+      "status": "OK",
+      "message": "Archive log usage normal",
+      "details": [],
+      "need_fix": false,
+      "fix_script": "fix_archive_purge.sh"
+    },
+    {
+      "id": "05",
+      "name": "invalid_objects",
+      "status": "OK",
+      "message": "No invalid objects found",
+      "details": [],
+      "need_fix": false,
+      "fix_script": "fix_recompile_obj.sh"
+    },
+    {
+      "id": "06",
+      "name": "alertlog",
+      "status": "WARNING",
+      "message": "      20 ORA- error(s) found in last 24h",
+      "details": [
+        "ORA-1031 signalled during: ALTER DATABASE COMMIT TO SWITCHOVER TO PRIMARY...\n",
+        "ORA-1031 signalled during: ALTER DATABASE RECOVER MANAGED STANDBY DATABASE FINISH...\n",
+        "ORA-1665 signalled during: ALTER DATABASE ACTIVATE STANDBY DATABASE...\n",
+        "ORA-1031 signalled during: ALTER DATABASE COMMIT TO SWITCHOVER TO STANDBY...\n",
+        "ORA-1531 signalled during: ALTER DATABASE OPEN READ ONLY...\n",
+        "ORA-1031 signalled during: ALTER DATABASE COMMIT TO SWITCHOVER TO PRIMARY...\n",
+        "ORA-1031 signalled during: ALTER DATABASE RECOVER MANAGED STANDBY DATABASE FINISH...\n",
+        "ORA-1665 signalled during: ALTER DATABASE ACTIVATE STANDBY DATABASE...\n",
+        "ORA-1031 signalled during: ALTER DATABASE COMMIT TO SWITCHOVER TO STANDBY...\n",
+        "ORA-1531 signalled during: ALTER DATABASE OPEN READ ONLY...\n"
+      ],
+      "need_fix": false,
+      "fix_script": ""
+    },
+    {
+      "id": "07",
+      "name": "resource_limit",
+      "status": "OK",
+      "message": "PROCESSES usage normal",
+      "details": [],
+      "need_fix": false,
+      "fix_script": "fix_process_limit.sh"
+    }
+  ],
+  "fixes_applied": [
+    {
+      "script": "fix_kill_session.sh",
+      "status": "ERROR",
+      "message": "Failed to kill session SID=59 SERIAL=62811"
+    }
+  ]
+}

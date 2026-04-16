@@ -1,0 +1,25 @@
+# Dependencies & build
+node_modules/
+dist/
+
+# OS / editor
+.DS_Store
+
+# Local run artifacts
+.agent-team-runs/
+team/plan.generated.json
+
+# Secrets (keep .env.example tracked)
+.env
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Local secrets (never commit)
+**/.vault_key
